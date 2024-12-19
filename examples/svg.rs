@@ -1,4 +1,5 @@
-use delaunator::{next_halfedge, Point, Triangulation, EMPTY};
+use delaunator::{next_halfedge, Triangulation, EMPTY};
+use glam::DVec2;
 use std::{env, fs::File, io::Write};
 const CANVAS_SIZE: f64 = 800.;
 const POINT_SIZE: usize = 4;
@@ -15,9 +16,9 @@ fn main() -> std::io::Result<()> {
     let default_path = "tests/fixtures/robust4.json".to_string();
     let args = env::args().collect::<Vec<String>>();
     let path = args.get(1).unwrap_or(&default_path);
-    let points: Vec<Point> = serde_json::from_reader::<_, Vec<(f64, f64)>>(File::open(path)?)?
+    let points: Vec<DVec2> = serde_json::from_reader::<_, Vec<(f64, f64)>>(File::open(path)?)?
         .iter()
-        .map(|p| Point { x: p.0, y: p.1 })
+        .map(|p| DVec2 { x: p.0, y: p.1 })
         .collect();
 
     // triangulate and scale points for display
@@ -52,7 +53,7 @@ fn main() -> std::io::Result<()> {
 
 /// Finds the center point and farthest point from it, then generates a new vector of
 /// scaled and offset points such that they fit between [0..SIZE]
-fn center_and_scale(points: &Vec<Point>, t: &Triangulation) -> Vec<Point> {
+fn center_and_scale(points: &Vec<DVec2>, t: &Triangulation) -> Vec<DVec2> {
     let center = &points[*t.triangles.get(0).unwrap_or(&0)];
     let farthest_distance = points
         .iter()
@@ -70,14 +71,14 @@ fn center_and_scale(points: &Vec<Point>, t: &Triangulation) -> Vec<Point> {
     );
     points
         .iter()
-        .map(|p| Point {
+        .map(|p| DVec2 {
             x: scale * p.x + offset.0,
             y: scale * p.y + offset.1,
         })
         .collect()
 }
 
-fn render_point(points: &[Point], triangulation: &Triangulation) -> String {
+fn render_point(points: &[DVec2], triangulation: &Triangulation) -> String {
     let mut circles = points
         .iter()
         .enumerate()

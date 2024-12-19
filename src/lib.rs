@@ -5,13 +5,14 @@ A port of [Delaunator](https://github.com/mapbox/delaunator).
 # Example
 
 ```rust
-use delaunator::{Point, triangulate};
+use delaunator::triangulate;
+use glam::DVec2;
 
 let points = vec![
-    Point { x: 0., y: 0. },
-    Point { x: 1., y: 0. },
-    Point { x: 1., y: 1. },
-    Point { x: 0., y: 1. },
+    DVec2 { x: 0., y: 0. },
+    DVec2 { x: 1., y: 0. },
+    DVec2 { x: 1., y: 1. },
+    DVec2 { x: 0., y: 1. },
 ];
 
 let result = triangulate(&points);
@@ -29,117 +30,62 @@ extern crate std;
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{cmp::Ordering, fmt};
-use robust::orient2d;
+use core::cmp::Ordering;
+use robust::{orient2d, Coord};
+use glam::{DVec2, DMat2};
 
 /// Near-duplicate points (where both `x` and `y` only differ within this value)
 /// will not be included in the triangulation for robustness.
 pub const EPSILON: f64 = f64::EPSILON * 2.0;
 
-/// Represents a 2D point in the input vector.
-#[derive(Clone, PartialEq, Default)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
+/// Returns a **negative** value if ```self```, ```q``` and ```r``` occur in counterclockwise order (```r``` is to the left of the directed line ```self``` --> ```q```)
+/// Returns a **positive** value if they occur in clockwise order(```r``` is to the right of the directed line ```self``` --> ```q```)
+/// Returns zero is they are collinear
+fn orient(p: &DVec2, q: &DVec2, r: &DVec2) -> f64 {
+    // robust-rs orients Y-axis upwards, our convention is Y downwards. This means that the interpretation of the result must be flipped
+    orient2d(Coord { x: p.x, y: p.y }, Coord { x: q.x, y: q.y }, Coord { x: r.x, y: r.y })
 }
 
-impl fmt::Debug for Point {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}, {}]", self.x, self.y)
-    }
+fn circumdelta(a: &DVec2, b: &DVec2, c: &DVec2) -> (f64, f64) {
+    let d: DVec2 = b - a;
+    let e: DVec2 = c - a;
+
+    let bl = d.dot(d);
+    let cl = e.dot(e);
+    let dl = 0.5 / DMat2::from_cols(d, e).determinant();
+
+    let x = (e.y * bl - d.y * cl) * dl;
+    let y = (d.x * cl - e.x * bl) * dl;
+    (x, y)
 }
 
-impl From<&Point> for robust::Coord<f64> {
-    fn from(p: &Point) -> robust::Coord<f64> {
-        robust::Coord::<f64> { x: p.x, y: p.y }
-    }
+fn circumradius2(a: &DVec2, b: &DVec2, c: &DVec2) -> f64 {
+    let (x, y) = circumdelta(a, b, c);
+    x * x + y * y
 }
 
-impl From<(f64, f64)> for Point {
-    fn from((x, y): (f64, f64)) -> Self {
-        Point { x, y }
-    }
+fn circumcenter(a: &DVec2, b: &DVec2, c: &DVec2) -> DVec2 {
+    let (x, y) = circumdelta(a, b, c);
+    DVec2::new(
+        a.x + x,
+        a.y + y,
+    )
 }
 
-impl From<[f64; 2]> for Point {
-    fn from([x, y]: [f64; 2]) -> Self {
-        Point { x, y }
-    }
+fn in_circle(a: &DVec2, b: &DVec2, c: &DVec2, p: &DVec2) -> bool {
+    let d = a - p;
+    let e = b - p;
+    let f = c - p;
+
+    let ap = d.dot(d);
+    let bp = e.dot(e);
+    let cp = f.dot(f);
+
+    d.x * (e.y * cp - bp * f.y) - d.y * (e.x * cp - bp * f.x) + ap * (e.x * f.y - e.y * f.x) < 0.0
 }
 
-impl From<Point> for (f64, f64) {
-    fn from(pt: Point) -> Self {
-        (pt.x, pt.y)
-    }
-}
-
-impl From<Point> for [f64; 2] {
-    fn from(pt: Point) -> Self {
-        [pt.x, pt.y]
-    }
-}
-
-impl Point {
-    fn dist2(&self, p: &Self) -> f64 {
-        let dx = self.x - p.x;
-        let dy = self.y - p.y;
-        dx * dx + dy * dy
-    }
-
-    /// Returns a **negative** value if ```self```, ```q``` and ```r``` occur in counterclockwise order (```r``` is to the left of the directed line ```self``` --> ```q```)
-    /// Returns a **positive** value if they occur in clockwise order(```r``` is to the right of the directed line ```self``` --> ```q```)
-    /// Returns zero is they are collinear
-    fn orient(&self, q: &Self, r: &Self) -> f64 {
-        // robust-rs orients Y-axis upwards, our convention is Y downwards. This means that the interpretation of the result must be flipped
-        orient2d(self.into(), q.into(), r.into())
-    }
-
-    fn circumdelta(&self, b: &Self, c: &Self) -> (f64, f64) {
-        let dx = b.x - self.x;
-        let dy = b.y - self.y;
-        let ex = c.x - self.x;
-        let ey = c.y - self.y;
-
-        let bl = dx * dx + dy * dy;
-        let cl = ex * ex + ey * ey;
-        let d = 0.5 / (dx * ey - dy * ex);
-
-        let x = (ey * bl - dy * cl) * d;
-        let y = (dx * cl - ex * bl) * d;
-        (x, y)
-    }
-
-    fn circumradius2(&self, b: &Self, c: &Self) -> f64 {
-        let (x, y) = self.circumdelta(b, c);
-        x * x + y * y
-    }
-
-    fn circumcenter(&self, b: &Self, c: &Self) -> Self {
-        let (x, y) = self.circumdelta(b, c);
-        Self {
-            x: self.x + x,
-            y: self.y + y,
-        }
-    }
-
-    fn in_circle(&self, b: &Self, c: &Self, p: &Self) -> bool {
-        let dx = self.x - p.x;
-        let dy = self.y - p.y;
-        let ex = b.x - p.x;
-        let ey = b.y - p.y;
-        let fx = c.x - p.x;
-        let fy = c.y - p.y;
-
-        let ap = dx * dx + dy * dy;
-        let bp = ex * ex + ey * ey;
-        let cp = fx * fx + fy * fy;
-
-        dx * (ey * cp - bp * fy) - dy * (ex * cp - bp * fx) + ap * (ex * fy - ey * fx) < 0.0
-    }
-
-    fn nearly_equals(&self, p: &Self) -> bool {
-        f64_abs(self.x - p.x) <= EPSILON && f64_abs(self.y - p.y) <= EPSILON
-    }
+fn nearly_equals(a: &DVec2, p: &DVec2) -> bool {
+    (a.x - p.x).abs() <= EPSILON && (a.y - p.y).abs() <= EPSILON
 }
 
 /// Represents the area outside of the triangulation.
@@ -148,21 +94,15 @@ impl Point {
 pub const EMPTY: usize = usize::MAX;
 
 /// Next halfedge in a triangle.
+#[inline]
 pub fn next_halfedge(i: usize) -> usize {
-    if i % 3 == 2 {
-        i - 2
-    } else {
-        i + 1
-    }
+    ((i + 1) % 3) + (i - i % 3)
 }
 
 /// Previous halfedge in a triangle.
+#[inline]
 pub fn prev_halfedge(i: usize) -> usize {
-    if i % 3 == 0 {
-        i + 2
-    } else {
-        i - 1
-    }
+    ((i + 2) % 3) + (i - i % 3)
 }
 
 /// Result of the Delaunay triangulation.
@@ -236,7 +176,7 @@ impl Triangulation {
         t
     }
 
-    fn legalize(&mut self, a: usize, points: &[Point], hull: &mut Hull) -> usize {
+    fn legalize(&mut self, a: usize, points: &[DVec2], hull: &mut Hull) -> usize {
         let b = self.halfedges[a];
 
         // if the pair of triangles doesn't satisfy the Delaunay condition
@@ -268,7 +208,7 @@ impl Triangulation {
         let pl = self.triangles[al];
         let p1 = self.triangles[bl];
 
-        let illegal = points[p0].in_circle(&points[pr], &points[pl], &points[p1]);
+        let illegal = in_circle(&points[p0], &points[pr], &points[pl], &points[p1]);
         if illegal {
             self.triangles[a] = p1;
             self.triangles[b] = p0;
@@ -321,12 +261,12 @@ struct Hull {
     tri: Vec<usize>,
     hash: Vec<usize>,
     start: usize,
-    center: Point,
+    center: DVec2,
 }
 
 impl Hull {
-    fn new(n: usize, center: Point, i0: usize, i1: usize, i2: usize, points: &[Point]) -> Self {
-        let hash_len = f64_sqrt(n as f64) as usize;
+    fn new(n: usize, center: DVec2, i0: usize, i1: usize, i2: usize, points: &[DVec2]) -> Self {
+        let hash_len = (n as f64).sqrt() as usize;
 
         let mut hull = Self {
             prev: vec![0; n],            // edge to prev edge
@@ -355,23 +295,22 @@ impl Hull {
         hull
     }
 
-    fn hash_key(&self, p: &Point) -> usize {
-        let dx = p.x - self.center.x;
-        let dy = p.y - self.center.y;
+    fn hash_key(&self, p: &DVec2) -> usize {
+        let d = p - self.center;
 
-        let p = dx / (f64_abs(dx) + f64_abs(dy));
-        let a = (if dy > 0.0 { 3.0 - p } else { 1.0 + p }) / 4.0; // [0..1]
+        let p = d.x / (d.x.abs() + d.y.abs());
+        let a = (if d.y > 0.0 { 3.0 - p } else { 1.0 + p }) / 4.0; // [0..1]
 
         let len = self.hash.len();
-        (f64_floor((len as f64) * a) as usize) % len
+        (((len as f64) * a).floor() as usize) % len
     }
 
-    fn hash_edge(&mut self, p: &Point, i: usize) {
+    fn hash_edge(&mut self, p: &DVec2, i: usize) {
         let key = self.hash_key(p);
         self.hash[key] = i;
     }
 
-    fn find_visible_edge(&self, p: &Point, points: &[Point]) -> (usize, bool) {
+    fn find_visible_edge(&self, p: &DVec2, points: &[DVec2]) -> (usize, bool) {
         let mut start: usize = 0;
         let key = self.hash_key(p);
         let len = self.hash.len();
@@ -384,7 +323,7 @@ impl Hull {
         start = self.prev[start];
         let mut e = start;
 
-        while p.orient(&points[e], &points[self.next[e]]) <= 0. {
+        while orient(&p, &points[e], &points[self.next[e]]) <= 0. {
             e = self.next[e];
             if e == start {
                 return (EMPTY, false);
@@ -394,7 +333,7 @@ impl Hull {
     }
 }
 
-fn calc_bbox_center(points: &[Point]) -> Point {
+fn calc_bbox_center(points: &[DVec2]) -> DVec2 {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -405,17 +344,17 @@ fn calc_bbox_center(points: &[Point]) -> Point {
         max_x = max_x.max(p.x);
         max_y = max_y.max(p.y);
     }
-    Point {
+    DVec2 {
         x: (min_x + max_x) / 2.0,
         y: (min_y + max_y) / 2.0,
     }
 }
 
-fn find_closest_point(points: &[Point], p0: &Point) -> Option<usize> {
+fn find_closest_point(points: &[DVec2], p0: &DVec2) -> Option<usize> {
     let mut min_dist = f64::INFINITY;
     let mut k: usize = 0;
     for (i, p) in points.iter().enumerate() {
-        let d = p0.dist2(p);
+        let d = p0.distance(*p);
         if d > 0.0 && d < min_dist {
             k = i;
             min_dist = d;
@@ -428,7 +367,7 @@ fn find_closest_point(points: &[Point], p0: &Point) -> Option<usize> {
     }
 }
 
-fn find_seed_triangle(points: &[Point]) -> Option<(usize, usize, usize)> {
+fn find_seed_triangle(points: &[DVec2]) -> Option<(usize, usize, usize)> {
     // pick a seed point close to the center
     let bbox_center = calc_bbox_center(points);
     let i0 = find_closest_point(points, &bbox_center)?;
@@ -445,7 +384,7 @@ fn find_seed_triangle(points: &[Point]) -> Option<(usize, usize, usize)> {
         if i == i0 || i == i1 {
             continue;
         }
-        let r = p0.circumradius2(p1, p);
+        let r = circumradius2(p0, p1, p);
         if r < min_radius {
             i2 = i;
             min_radius = r;
@@ -456,7 +395,7 @@ fn find_seed_triangle(points: &[Point]) -> Option<(usize, usize, usize)> {
         None
     } else {
         // swap the order of the seed points for counter-clockwise orientation
-        Some(if p0.orient(p1, &points[i2]) > 0. {
+        Some(if orient(p0, p1, &points[i2]) > 0. {
             (i0, i2, i1)
         } else {
             (i0, i1, i2)
@@ -469,8 +408,8 @@ fn sortf(f: &mut [(usize, f64)]) {
 }
 
 /// Order collinear points by dx (or dy if all x are identical) and return the list as a hull
-fn handle_collinear_points(points: &[Point]) -> Triangulation {
-    let Point { x, y } = points.first().cloned().unwrap_or_default();
+fn handle_collinear_points(points: &[DVec2]) -> Triangulation {
+    let DVec2 { x, y } = points.first().cloned().unwrap_or_default();
 
     let mut dist: Vec<_> = points
         .iter()
@@ -500,7 +439,7 @@ fn handle_collinear_points(points: &[Point]) -> Triangulation {
 /// Triangulate a set of 2D points.
 /// Returns the triangulation for the input points.
 /// For the degenerated case when all points are collinear, returns an empty triangulation where all points are in the hull.
-pub fn triangulate(points: &[Point]) -> Triangulation {
+pub fn triangulate(points: &[DVec2]) -> Triangulation {
     let seed_triangle = find_seed_triangle(points);
     if seed_triangle.is_none() {
         return handle_collinear_points(points);
@@ -509,7 +448,7 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
     let n = points.len();
     let (i0, i1, i2) =
         seed_triangle.expect("At this stage, points are guaranteed to yeild a seed triangle");
-    let center = points[i0].circumcenter(&points[i1], &points[i2]);
+    let center = circumcenter(&points[i0], &points[i1], &points[i2]);
 
     let mut triangulation = Triangulation::new(n);
     triangulation.add_triangle(i0, i1, i2, EMPTY, EMPTY, EMPTY);
@@ -518,7 +457,7 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
     let mut dists: Vec<_> = points
         .iter()
         .enumerate()
-        .map(|(i, point)| (i, center.dist2(point)))
+        .map(|(i, point)| (i, center.distance(*point)))
         .collect();
 
     sortf(&mut dists);
@@ -529,7 +468,7 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
         let p = &points[i];
 
         // skip near-duplicates
-        if k > 0 && p.nearly_equals(&points[dists[k - 1].0]) {
+        if k > 0 && nearly_equals(&p, &points[dists[k - 1].0]) {
             continue;
         }
         // skip seed triangle points
@@ -554,7 +493,7 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
         let mut n = hull.next[e];
         loop {
             let q = hull.next[n];
-            if p.orient(&points[n], &points[q]) <= 0. {
+            if orient(&p, &points[n], &points[q]) <= 0. {
                 break;
             }
             let t = triangulation.add_triangle(n, i, q, hull.tri[i], EMPTY, hull.tri[n]);
@@ -567,7 +506,7 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
         if walk_back {
             loop {
                 let q = hull.prev[e];
-                if p.orient(&points[q], &points[e]) <= 0. {
+                if orient(&p, &points[q], &points[e]) <= 0. {
                     break;
                 }
                 let t = triangulation.add_triangle(q, i, e, EMPTY, hull.tri[e], hull.tri[q]);
@@ -604,56 +543,4 @@ pub fn triangulate(points: &[Point]) -> Triangulation {
     triangulation.halfedges.shrink_to_fit();
 
     triangulation
-}
-
-#[cfg(feature = "std")]
-#[inline]
-fn f64_abs(f: f64) -> f64 {
-    f.abs()
-}
-
-#[cfg(not(feature = "std"))]
-#[inline]
-fn f64_abs(f: f64) -> f64 {
-    const SIGN_BIT: u64 = 1 << 63;
-    f64::from_bits(f64::to_bits(f) & !SIGN_BIT)
-}
-
-#[cfg(feature = "std")]
-#[inline]
-fn f64_floor(f: f64) -> f64 {
-    f.floor()
-}
-
-#[cfg(not(feature = "std"))]
-#[inline]
-fn f64_floor(f: f64) -> f64 {
-    let mut res = (f as i64) as f64;
-    if res > f {
-        res -= 1.0;
-    }
-    res as f64
-}
-
-#[cfg(feature = "std")]
-#[inline]
-fn f64_sqrt(f: f64) -> f64 {
-    f.sqrt()
-}
-
-#[cfg(not(feature = "std"))]
-#[inline]
-fn f64_sqrt(f: f64) -> f64 {
-    if f < 2.0 {
-        return f;
-    };
-
-    let sc = f64_sqrt(f / 4.0) * 2.0;
-    let lc = sc + 1.0;
-
-    if lc * lc > f {
-        sc
-    } else {
-        lc
-    }
 }

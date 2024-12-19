@@ -12,6 +12,7 @@ keywords = ["delaunay", "triangulation", "tessellation", "spatial", "geometry"]
 authors = ["Vladimir Agafonkin <agafonkin@gmail.com>"]
 
 [dependencies]
+glam = "0.29.2"
 robust = "1.0.0"
 
 [dev-dependencies]

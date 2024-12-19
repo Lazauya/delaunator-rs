@@ -1,4 +1,5 @@
-use delaunator::{triangulate, Point, Triangulation, EMPTY, EPSILON};
+use delaunator::{triangulate, Triangulation, EMPTY, EPSILON};
+use glam::DVec2;
 use std::f64;
 use std::fs::File;
 
@@ -58,7 +59,7 @@ fn bad_input() {
     assert!(halfedges.is_empty(), "Expected no edges (0 point)");
     assert!(hull.is_empty(), "Expected no hull (0 point)");
 
-    points.push(Point { x: 0., y: 0. });
+    points.push(DVec2 { x: 0., y: 0. });
     let Triangulation {
         triangles,
         halfedges,
@@ -69,7 +70,7 @@ fn bad_input() {
     assert!(halfedges.is_empty(), "Expected no edges (1 point)");
     assert!(hull.len() == 1, "Expected single point on hull (1 point)");
 
-    points.push(Point { x: 1., y: 0. });
+    points.push(DVec2 { x: 1., y: 0. });
     let Triangulation {
         triangles,
         halfedges,
@@ -84,7 +85,7 @@ fn bad_input() {
         "Expected ordered hull points (2 point)"
     );
 
-    points.push(Point { x: 2., y: 0. });
+    points.push(DVec2 { x: 2., y: 0. });
     let Triangulation {
         triangles,
         halfedges,
@@ -108,15 +109,15 @@ fn bad_input() {
         "Expected ordered hull points (3 collinear points)"
     );
 
-    points.push(Point { x: 1., y: 1. });
+    points.push(DVec2 { x: 1., y: 1. });
     validate(&points);
 }
 
 #[test]
 fn unordered_collinear_points_input() {
-    let points: Vec<Point> = [10, 2, 4, 4, 1, 0, 3, 6, 8, 5, 7, 9]
+    let points: Vec<DVec2> = [10, 2, 4, 4, 1, 0, 3, 6, 8, 5, 7, 9]
         .iter()
-        .map(|y| Point {
+        .map(|y| DVec2 {
             x: 0.0,
             y: *y as f64,
         })
@@ -163,36 +164,36 @@ fn hull_collinear_issue24() {
 /// In this test, the output does not matter as long as an output is returned.
 fn invalid_nan_sequence() {
     let points = vec![
-        Point { x: -3.5, y: -1.5 },
-        Point {
+        DVec2 { x: -3.5, y: -1.5 },
+        DVec2 {
             x: f64::NAN,
             y: f64::NAN,
         },
-        Point {
+        DVec2 {
             x: f64::NAN,
             y: f64::NAN,
         },
-        Point { x: -3.5, y: -1.5 },
+        DVec2 { x: -3.5, y: -1.5 },
     ];
     triangulate(&points);
 }
 
 #[test]
-/// The test demonstrates and validates our tuple and array round tripping of `Point`
+/// The test demonstrates and validates our tuple and array round tripping of `DVec2`
 fn tuple_array_conv() {
-    // Tuple/Array --> Point
-    assert_eq!(Into::<Point>::into((1., 2.)), Point { x: 1., y: 2. });
-    assert_eq!(Into::<Point>::into([1., 2.]), Point { x: 1., y: 2. });
+    // Tuple/Array --> DVec2
+    assert_eq!(Into::<DVec2>::into((1., 2.)), DVec2 { x: 1., y: 2. });
+    assert_eq!(Into::<DVec2>::into([1., 2.]), DVec2 { x: 1., y: 2. });
 
-    // Point --> Tuple/Array
-    assert_eq!(Into::<(f64, f64)>::into(Point { x: 1., y: 2. }), (1., 2.));
-    assert_eq!(Into::<[f64; 2]>::into(Point { x: 1., y: 2. }), [1., 2.]);
+    // DVec2 --> Tuple/Array
+    assert_eq!(Into::<(f64, f64)>::into(DVec2 { x: 1., y: 2. }), (1., 2.));
+    assert_eq!(Into::<[f64; 2]>::into(DVec2 { x: 1., y: 2. }), [1., 2.]);
 }
 
-fn scale_points(points: &[Point], scale: f64) -> Vec<Point> {
-    let scaled: Vec<Point> = points
+fn scale_points(points: &[DVec2], scale: f64) -> Vec<DVec2> {
+    let scaled: Vec<DVec2> = points
         .iter()
-        .map(|p| Point {
+        .map(|p| DVec2 {
             x: p.x * scale,
             y: p.y * scale,
         })
@@ -200,14 +201,18 @@ fn scale_points(points: &[Point], scale: f64) -> Vec<Point> {
     scaled
 }
 
-fn load_fixture(path: &str) -> Vec<Point> {
+fn load_fixture(path: &str) -> Vec<DVec2> {
     let file = File::open(path).unwrap();
     let u: Vec<(f64, f64)> = serde_json::from_reader(file).unwrap();
-    u.iter().map(|p| Point { x: p.0, y: p.1 }).collect()
+    u.iter().map(|p| DVec2 { x: p.0, y: p.1 }).collect()
 }
 
-fn orient(p: &Point, q: &Point, r: &Point) -> f64 {
-    robust::orient2d(p.into(), q.into(), r.into())
+fn orient(p: &DVec2, q: &DVec2, r: &DVec2) -> f64 {
+    robust::orient2d(
+        robust::Coord { x: p.x, y: p.y },
+        robust::Coord { x: q.x, y: q.y },
+        robust::Coord { x: r.x, y: r.y },
+    )
 }
 
 /// make sure hull is convex and counter-clockwise (p1 is to the right of the directed line p0 --> p2)
@@ -216,7 +221,7 @@ fn orient(p: &Point, q: &Point, r: &Point) -> f64 {
 //   \                           ^
 //    > p0 ---------------> p2 /
 //              p1
-fn assert_convex(p0: &Point, p1: &Point, p2: &Point) {
+fn assert_convex(p0: &DVec2, p1: &DVec2, p2: &DVec2) {
     let l = orient(p0, p2, p1);
     assert!(l >= 0., "p1 ({:?}) is to the left of the directed line p0 ({:?}) --> p2 ({:?}). Hull is not convex.", p1, p0, p2);
 
@@ -229,7 +234,7 @@ fn assert_convex(p0: &Point, p1: &Point, p2: &Point) {
     }
 }
 
-fn validate(points: &[Point]) {
+fn validate(points: &[DVec2]) {
     let Triangulation {
         triangles,
         halfedges,

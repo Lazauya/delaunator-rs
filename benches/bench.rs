@@ -6,8 +6,9 @@ extern crate rand;
 
 use core::iter::repeat_with;
 use criterion::{AxisScale, BenchmarkId, Criterion, PlotConfiguration};
-use delaunator::{triangulate, Point};
+use delaunator::{triangulate};
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use glam::DVec2;
 
 const COUNTS: &[usize] = &[100, 1000, 10_000, 100_000];
 
@@ -15,7 +16,7 @@ fn bench(c: &mut Criterion) {
     let mut rng: StdRng = StdRng::seed_from_u64(123);
 
     let all_points: Vec<_> = repeat_with(|| rng.gen())
-        .map(|(x, y)| Point { x, y })
+        .map(|(x, y)| DVec2 { x, y })
         .take(*COUNTS.last().unwrap())
         .collect();
 
