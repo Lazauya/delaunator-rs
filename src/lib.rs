@@ -96,13 +96,21 @@ pub const EMPTY: usize = usize::MAX;
 /// Next halfedge in a triangle.
 #[inline]
 pub fn next_halfedge(i: usize) -> usize {
-    ((i + 1) % 3) + (i - i % 3)
+    if i % 3 == 2 {
+        i - 2
+    } else {
+        i + 1
+    }
 }
 
 /// Previous halfedge in a triangle.
 #[inline]
 pub fn prev_halfedge(i: usize) -> usize {
-    ((i + 2) % 3) + (i - i % 3)
+    if i % 3 == 0 {
+        i + 2
+    } else {
+        i - 1
+    }
 }
 
 /// Result of the Delaunay triangulation.
