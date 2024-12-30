@@ -73,9 +73,9 @@ fn circumcenter(a: &DVec2, b: &DVec2, c: &DVec2) -> DVec2 {
 }
 
 fn in_circle(a: &DVec2, b: &DVec2, c: &DVec2, p: &DVec2) -> bool {
-    let d = a - p;
-    let e = b - p;
-    let f = c - p;
+    let d = *a - *p;
+    let e = *b - *p;
+    let f = *c - *p;
 
     let ap = d.dot(d);
     let bp = e.dot(e);
@@ -304,7 +304,7 @@ impl Hull {
     }
 
     fn hash_key(&self, p: &DVec2) -> usize {
-        let d = p - self.center;
+        let d = *p - self.center;
 
         let p = d.x / (d.x.abs() + d.y.abs());
         let a = (if d.y > 0.0 { 3.0 - p } else { 1.0 + p }) / 4.0; // [0..1]
