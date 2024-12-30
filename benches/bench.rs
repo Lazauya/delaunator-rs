@@ -10,7 +10,7 @@ use delaunator::{triangulate};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use glam::DVec2;
 
-const COUNTS: &[usize] = &[100, 1000, 10_000, 100_000];
+const COUNTS: &[usize] = &[100, 1000, 10_000, 100_000, 1_000_000];
 
 fn bench(c: &mut Criterion) {
     let mut rng: StdRng = StdRng::seed_from_u64(123);
