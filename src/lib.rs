@@ -47,8 +47,8 @@ fn orient(p: &DVec2, q: &DVec2, r: &DVec2) -> f64 {
 }
 
 fn circumdelta(a: &DVec2, b: &DVec2, c: &DVec2) -> (f64, f64) {
-    let d: DVec2 = b - a;
-    let e: DVec2 = c - a;
+    let d: DVec2 = *b - *a;
+    let e: DVec2 = *c - *a;
 
     let bl = d.dot(d);
     let cl = e.dot(e);
